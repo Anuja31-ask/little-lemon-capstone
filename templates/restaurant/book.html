@@ -1,0 +1,113 @@
+{% extends "restaurant/base.html" %}
+{% block title %}Book a Table | Little Lemon{% endblock %}
+{% block content %}
+<section class="hero">
+  <div><p class="eyebrow">LITTLE LEMON RESTAURANT</p><h1>Reserve your table</h1><p>Choose your date and a time that works for you.</p></div>
+  <div class="hero-lemon" aria-hidden="true">🍋</div>
+</section>
+<div class="content-grid">
+  <section class="panel">
+    <h2>Make a reservation</h2>
+    <form id="booking-form">
+      {% csrf_token %}
+      <label for="first-name">First name</label>
+      <input id="first-name" name="first_name" type="text" maxlength="100" placeholder="Your first name" required>
+      <label for="reservation-date">Reservation date</label>
+      <input id="reservation-date" name="reservation_date" type="date" value="{{ today }}" min="{{ today }}" required>
+      <label for="reservation-slot">Reservation slot</label>
+      <select id="reservation-slot" name="reservation_slot" required>
+        <option value="">Choose a time</option>
+        {% for slot in slots %}<option value="{{ slot }}">{{ slot }}:00</option>{% endfor %}
+      </select>
+      <p id="form-message" class="message" role="status" aria-live="polite"></p>
+      <button type="submit" class="primary-button">Book table</button>
+    </form>
+  </section>
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">YOUR SELECTED DATE</p><h2>Current reservations</h2></div><span class="live-dot">Live</span></div>
+    <p id="reservation-date-label" class="muted"></p>
+    <div id="current-reservations" class="reservation-list"><p class="muted">Loading reservations…</p></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const dateInput = document.getElementById("reservation-date");
+  const slotSelect = document.getElementById("reservation-slot");
+  const reservationList = document.getElementById("current-reservations");
+  const message = document.getElementById("form-message");
+  const form = document.getElementById("booking-form");
+  const dateLabel = document.getElementById("reservation-date-label");
+  const csrf = document.querySelector("[name=csrfmiddlewaretoken]").value;
+
+  async function refreshBookings() {
+    const date = dateInput.value;
+    dateLabel.textContent = date ? `Reservations for ${date}` : "";
+    try {
+      const response = await fetch(`/bookings?date=${encodeURIComponent(date)}`);
+      const bookings = await response.json();
+      if (!response.ok) throw new Error(bookings.error || "Could not load bookings.");
+      const bookedSlots = new Set(bookings.map(item => Number(item.reservation_slot)));
+      Array.from(slotSelect.options).forEach(option => {
+        if (!option.value) return;
+        const booked = bookedSlots.has(Number(option.value));
+        option.disabled = booked;
+        option.textContent = `${option.value}:00${booked ? " — Booked" : ""}`;
+      });
+      if (slotSelect.value && bookedSlots.has(Number(slotSelect.value))) slotSelect.value = "";
+      reservationList.replaceChildren();
+      if (!bookings.length) {
+        const empty = document.createElement("p");
+        empty.className = "muted";
+        empty.textContent = "No Booking for this date.";
+        reservationList.appendChild(empty);
+      } else {
+        bookings.forEach(booking => {
+          const item = document.createElement("div");
+          item.className = "reservation-item";
+          const name = document.createElement("strong");
+          name.textContent = booking.first_name;
+          const time = document.createElement("span");
+          time.textContent = `${booking.reservation_slot}:00`;
+          item.append(name, time);
+          reservationList.appendChild(item);
+        });
+      }
+    } catch (error) {
+      reservationList.textContent = error.message;
+    }
+  }
+
+  dateInput.addEventListener("change", refreshBookings);
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    message.textContent = "";
+    const payload = {
+      first_name: document.getElementById("first-name").value.trim(),
+      reservation_date: dateInput.value,
+      reservation_slot: slotSelect.value
+    };
+    try {
+      const response = await fetch("/create-booking/", {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "X-CSRFToken": csrf},
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to create booking.");
+      message.textContent = result.message;
+      message.className = "message success";
+      form.reset();
+      dateInput.value = "{{ today }}";
+      await refreshBookings();
+    } catch (error) {
+      message.textContent = error.message;
+      message.className = "message error";
+      await refreshBookings();
+    }
+  });
+  refreshBookings();
+})();
+</script>
+{% endblock %}

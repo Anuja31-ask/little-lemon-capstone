@@ -1,0 +1,36 @@
+{% extends "restaurant/base.html" %}
+{% block title %}Reservations | Little Lemon{% endblock %}
+{% block content %}
+<section class="hero compact"><div><p class="eyebrow">BOOKING OVERVIEW</p><h1>Reservations</h1><p>Browse all bookings or filter by date.</p></div></section>
+<section class="panel wide-panel">
+  <div class="filter-row"><div><label for="filter-date">Filter by reservation date</label><input id="filter-date" type="date" value="{{ today }}"></div><button id="show-all" class="secondary-button" type="button">Show all bookings</button></div>
+  <p id="status" class="muted" aria-live="polite">Loading reservations…</p>
+  <pre id="json-output" class="json-output">[]</pre>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const dateInput = document.getElementById("filter-date");
+  const output = document.getElementById("json-output");
+  const status = document.getElementById("status");
+  let showAll = false;
+  async function load() {
+    const query = showAll || !dateInput.value ? "" : `?date=${encodeURIComponent(dateInput.value)}`;
+    try {
+      const response = await fetch(`/bookings${query}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not load reservations.");
+      output.textContent = JSON.stringify(data, null, 2);
+      status.textContent = data.length ? `${data.length} reservation(s) found.` : "No Booking for this date.";
+    } catch (error) {
+      output.textContent = "{}";
+      status.textContent = error.message;
+    }
+  }
+  dateInput.addEventListener("change", () => { showAll = false; load(); });
+  document.getElementById("show-all").addEventListener("click", () => { showAll = true; load(); });
+  load();
+})();
+</script>
+{% endblock %}
